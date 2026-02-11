@@ -5,7 +5,7 @@
 # ## Step 1: Define the Problem
 # Review these two datasets and brainstorm problems that could be addressed with the dataset. Identify a question for each dataset.
 # - College Completion, Is there a correlation between the institutional level of schooling and the graduation rate?
-# -  Job Placement, Does gender have a significant impact on job salary, despite having the same qualifications?
+# -  Job Placement, Does gender have a significant impact on job placement, despite having the same qualifications?
 
 # %% [markdown]
 # ## Step 2: Work through the steps outlined in the examples to include the following elements:
@@ -24,13 +24,13 @@
 # %% [markdown]
 # ## Generic Questions
 # - College Completion, Is there a correlation between the institutional level of schooling and the graduation rate?
-# - Job Placement, Does gender have a significant impact on job salary, despite having the same qualifications?
+# - Job Placement, Does gender have a significant impact on job placement, despite having the same qualifications?
 
 # %% [markdown]
 # ## Independent Business Metric
 # ### The measure we use to track whether the algorithm we have built is delivering value for our organization.
 # - College Completion: The independent business metric is the graduation rate (the percentage of students who complete their college education). This dependent variable helps us understand institutional success rates and will be analyzed against the level (whether that be 2-year vs 4-year) to find correlations between institution type and the graduation rates.
-# - Job Placement: The independent business metric is average salary of job placements. This dependent variable helps us evaluate financial outcomes and will be analyzed by based on gender (while keeping qualifications controlled) to assess whether gender disparities exist in salary outcomes for similarly qualified people.
+# - Job Placement: The independent business metric is average job placements. This dependent variable helps us evaluate financial outcomes and will be analyzed by based on gender (while keeping qualifications controlled) to assess whether gender disparities exist in job placement outcomes for similarly qualified people.
 
 # %%
 # Imports - Libraries needed for data manipulation and ML preprocessing
@@ -55,7 +55,14 @@ college_data[college_cols] = college_data[college_cols].astype('category')
 # Job data
 job_data = pd.read_csv('Job_Placement.csv')
 job_data.info()
-job_cols = ["gender", "ssc_b", "hsc_b", "hsc_s", "degree_t", "workex", "specialisation", "status"]
+
+# Save status separately as the TARGET to avoid leakage
+job_target = job_data['status']
+
+# Drop status from predictors (leakage issue)
+job_data = job_data.drop(['status'], axis=1)
+
+job_cols = ["gender", "ssc_b", "hsc_b", "hsc_s", "degree_t", "workex", "specialisation"]
 job_data[job_cols] = job_data[job_cols].astype('category')
 
 # %%
@@ -78,6 +85,9 @@ college_encoded.info()
 # Job data
 jcategory_list = list(job_data.select_dtypes('category'))
 job_encoded = pd.get_dummies(job_data, columns=jcategory_list)
+
+# Create target variable (Placed = 1, Not Placed = 0)
+job_encoded['placed'] = (job_target == "Placed").astype(int)
 job_encoded.info()
 
 # %%
@@ -86,12 +96,16 @@ job_encoded.info()
 college_numeric_cols = ['ft_pct', 'pell_value', 'retain_value', 'grad_100_value', 'awards_per_value', 'fte_value', 'aid_value', 'endow_value']
 college_encoded.boxplot(column=college_numeric_cols, vert=False, grid=False)
 college_encoded[college_numeric_cols].describe()
+scaler_college = StandardScaler()
+college_encoded[college_numeric_cols] = scaler_college.fit_transform(college_encoded[college_numeric_cols])
 
 # Job data
 job_numeric_cols = ['ssc_p', 'hsc_p', 'degree_p', 'etest_p', 'mba_p']
 # Used different plotting method to avoid overlapping boxplots due to the number of numeric columns and because the other one was causing issues with the display of the boxplots.
 job_encoded[job_numeric_cols].plot(kind='box', vert=False, figsize=(10, 4))
 job_encoded[job_numeric_cols].describe()
+scaler_job = StandardScaler()
+job_encoded[job_numeric_cols] = scaler_job.fit_transform(job_encoded[job_numeric_cols])
 
 # %%
 ## Drop unneeded variables 
@@ -100,7 +114,7 @@ college_dt = college_encoded.drop(['index', 'unitid', 'chronname', 'city', 'site
 college_dt 
 
 # Job data
-job_dt = job_encoded.drop(['sl_no'], axis=1)
+job_dt = job_encoded.drop(['sl_no', 'salary'], axis=1)
 job_dt
 
 # %%
@@ -114,15 +128,6 @@ college_dt['high_completion'] = pd.cut(college_dt['grad_150_value'],
                                        bins=[-1, median_grad, 101],
                                        labels=[0, 1])
 
-# Job data
-# drop rows with missing salary values first
-job_dt = job_dt[job_dt['salary'].notna()].copy()
-# create binary target variable based on grad_150_value
-median_salary = job_dt['salary'].median()
-job_dt['high_salary'] = pd.cut(job_dt['salary'],
-                                bins=[-1, median_salary, 1000000],
-                                labels=[0, 1])
-
 # %%
 ## Calculate the prevalence of the target variable
 # College data
@@ -131,8 +136,7 @@ prevalence = (college_dt['high_completion'].value_counts()[1] /
 # value_counts()[1] gets count of '1' values (high quality)
 # Divide by total count to get proportion
 # Job data
-prevalence_job = (job_dt['high_salary'].value_counts()[1] /
-                  len(job_dt['high_salary']))
+prevalence_job = job_dt['placed'].mean()
 # value_counts()[1] gets count of '1' values (high quality)
 # Divide by total count to get proportion
 
@@ -156,23 +160,25 @@ college_tune, college_test = train_test_split(
 )
 
 # Job data
-job_clean = job_dt.drop(['salary'], axis=1)
+job_clean = job_dt.copy()
+
 # Separate training data from the rest
 job_train, job_temp = train_test_split(
     job_clean,
     train_size=0.60,
-    stratify=job_clean.high_salary,
+    stratify=job_clean.placed,
     random_state=42
 )
+
 # Split remaining data into tuning and test sets (50/50)
 job_tune, job_test = train_test_split(
     job_temp,
     train_size=0.50,
-    stratify=job_temp.high_salary,
+    stratify=job_temp.placed,
     random_state=42
 )
 
 # %% [markdown]
 # ## Step 3: What do your instincts tell you about the data. Can it address your problem, what areas/items are you worried about?
 # - College Completion, I believe that this data would be able to address the problem of whether there is a correlation between the level of schooling students are in currently and the graduation rate. But, I am concerned about potential confounding variables, such as socioeconomic status, access to resources, and personal motivation. I would want to ensure that the data is accurately representative of the population being studied, but these variables might skew the results.
-# - Job Placement, I think that this data would be able to address the problem of whether gender has a significant impact on job salary, despite having the same qualifications. Although, I am worried about possible variables that may influence the results I am seeking. For example, experience level, industry, and location.
+# - Job Placement, I think that this data would be able to address the problem of whether gender has a significant impact on job placement status, despite having the same qualifications. Although, I am worried about possible variables that may influence the results I am seeking. For example, experience level, industry, and location.
