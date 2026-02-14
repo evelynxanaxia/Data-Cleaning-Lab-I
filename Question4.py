@@ -32,17 +32,23 @@ def encode_and_visualize_college(college_dt):
     ccategory_list = list(college_dt.select_dtypes('category'))
     college_encoded = pd.get_dummies(college_dt, columns=ccategory_list)
     
-    # Normalize the continuous variables (visualization only)
+    # Normalize the continuous variables
     college_numeric_cols = ['ft_pct', 'pell_value', 'retain_value', 
-                           'grad_100_value', 'awards_per_value', 'fte_value', 
-                           'aid_value', 'endow_value']
-    college_encoded.boxplot(column=college_numeric_cols, vert=False, grid=False)
+                            'grad_100_value', 'awards_per_value', 'fte_value', 
+                            'aid_value', 'endow_value']
     
+    college_encoded.boxplot(column=college_numeric_cols, vert=False, grid=False)
+
+    scaler_college = StandardScaler()
+    college_encoded[college_numeric_cols] = scaler_college.fit_transform(
+        college_encoded[college_numeric_cols]
+    )
+
     return college_encoded
 
 
 def create_college_targets_and_split(college_encoded):
-    # Create target variable if needed
+    # Create target variable
     median_grad = college_encoded['grad_150_value'].median()
     college_encoded['high_completion'] = pd.cut(
         college_encoded['grad_150_value'],
@@ -50,11 +56,10 @@ def create_college_targets_and_split(college_encoded):
         labels=[0, 1]
     )
     
-    # Calculate the prevalence of the target variable
-    prevalence = (college_encoded['high_completion'].value_counts()[1] /
-                  len(college_encoded['high_completion']))
+    # Calculate prevalence
+    prevalence = college_encoded['high_completion'].astype(int).mean()
     
-    # Create the necessary data partitions (Train, Tune, Test)
+    # Create partitions
     college_clean = college_encoded.drop(['grad_150_value', 'grad_100_value'], axis=1)
     
     college_train, college_temp = train_test_split(
@@ -63,6 +68,7 @@ def create_college_targets_and_split(college_encoded):
         stratify=college_clean.high_completion,
         random_state=42
     )
+    
     college_tune, college_test = train_test_split(
         college_temp,
         train_size=0.50,
@@ -73,65 +79,65 @@ def create_college_targets_and_split(college_encoded):
     return college_train, college_tune, college_test, prevalence
 
 
-# - Job Placement 
+# - Job Placement
 def preprocess_job_basic(file_path):
     # Load data
     job_data = pd.read_csv(file_path)
-    
+
+    # Save status separately as the TARGET to avoid leakage
+    job_target = job_data['status']
+
+    # Drop status from predictors (leakage issue)
+    job_data = job_data.drop(['status'], axis=1)
+
     # Correct variable type/class as needed
-    job_cols = ["gender", "ssc_b", "hsc_b", "hsc_s", "degree_t", 
-                "workex", "specialisation", "status"]
+    job_cols = ["gender", "ssc_b", "hsc_b", "hsc_s", "degree_t", "workex", "specialisation"]
     job_data[job_cols] = job_data[job_cols].astype('category')
-    
-    # Drop unneeded variables
-    job_dt = job_data.drop(['sl_no'], axis=1)
-    
-    return job_dt
+
+    return job_data, job_target
 
 
-def encode_and_visualize_job(job_dt):
+def encode_and_visualize_job(job_data, job_target):
     # One-hot encoding factor variables
-    jcategory_list = list(job_dt.select_dtypes('category'))
-    job_encoded = pd.get_dummies(job_dt, columns=jcategory_list)
-    
-    # Normalize the continuous variables (visualization only)
+    jcategory_list = list(job_data.select_dtypes('category'))
+    job_encoded = pd.get_dummies(job_data, columns=jcategory_list)
+
+    # Create target variable (Placed = 1, Not Placed = 0)
+    job_encoded['placed'] = (job_target == "Placed").astype(int)
+
+    # Normalize the continuous variables
     job_numeric_cols = ['ssc_p', 'hsc_p', 'degree_p', 'etest_p', 'mba_p']
     job_encoded[job_numeric_cols].plot(kind='box', vert=False, figsize=(10, 4))
-    
+
+    scaler_job = StandardScaler()
+    job_encoded[job_numeric_cols] = scaler_job.fit_transform(job_encoded[job_numeric_cols])
+
+    # Drop unneeded variables (salary has structural missingness tied to placement)
+    job_encoded = job_encoded.drop(['sl_no', 'salary'], axis=1)
+
     return job_encoded
 
 
 def create_job_targets_and_split(job_encoded):
-    # Filter for placed students only
-    job_encoded = job_encoded[job_encoded['salary'].notna()].copy()
-    
-    # Create target variable if needed
-    median_salary = job_encoded['salary'].median()
-    job_encoded['high_salary'] = pd.cut(
-        job_encoded['salary'],
-        bins=[-1, median_salary, 1000000],
-        labels=[0, 1]
-    )
-    
-    # Calculate the prevalence of the target variable
-    prevalence_job = (job_encoded['high_salary'].value_counts()[1] /
-                      len(job_encoded['high_salary']))
-    
-    # Create the necessary data partitions (Train, Tune, Test)
-    job_clean = job_encoded.drop(['salary'], axis=1)
-    
+    # Calculate prevalence of placement
+    prevalence_job = job_encoded['placed'].mean()
+
+    # Create partitions
+    job_clean = job_encoded.copy()
+
     job_train, job_temp = train_test_split(
         job_clean,
         train_size=0.60,
-        stratify=job_clean.high_salary,
+        stratify=job_clean.placed,
         random_state=42
     )
+
     job_tune, job_test = train_test_split(
         job_temp,
         train_size=0.50,
-        stratify=job_temp.high_salary,
+        stratify=job_temp.placed,
         random_state=42
     )
-    
+
     return job_train, job_tune, job_test, prevalence_job
-# %%
+

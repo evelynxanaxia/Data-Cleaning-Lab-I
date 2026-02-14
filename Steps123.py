@@ -4,7 +4,7 @@
 # %% [markdown]
 # ## Step 1: Define the Problem
 # Review these two datasets and brainstorm problems that could be addressed with the dataset. Identify a question for each dataset.
-# - College Completion, Is there a correlation between the institutional level of schooling and the graduation rate?
+# - College Completion, Can we predict whether a college has a graduation rate above the median?
 # -  Job Placement, Does gender have a significant impact on job placement, despite having the same qualifications?
 
 # %% [markdown]
@@ -23,13 +23,13 @@
 
 # %% [markdown]
 # ## Generic Questions
-# - College Completion, Is there a correlation between the institutional level of schooling and the graduation rate?
+# - College Completion, Can we predict whether a college has a high graduation rate (above the median) based on characteristics such as level, control type, and other metrics?
 # - Job Placement, Does gender have a significant impact on job placement, despite having the same qualifications?
 
 # %% [markdown]
 # ## Independent Business Metric
 # ### The measure we use to track whether the algorithm we have built is delivering value for our organization.
-# - College Completion: The independent business metric is the graduation rate (the percentage of students who complete their college education). This dependent variable helps us understand institutional success rates and will be analyzed against the level (whether that be 2-year vs 4-year) to find correlations between institution type and the graduation rates.
+# - College Completion: The independent business metric is the graduation rate (the percentage of students who complete their college education). This dependent variable helps us understand institutional success rates and will be analyzed against the median to find correlations between institution type and the graduation rates.
 # - Job Placement: The independent business metric is average job placements. This dependent variable helps us evaluate financial outcomes and will be analyzed by based on gender (while keeping qualifications controlled) to assess whether gender disparities exist in job placement outcomes for similarly qualified people.
 
 # %%
